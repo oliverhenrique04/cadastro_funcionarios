@@ -32,24 +32,25 @@ Um mini sistema web completo e responsivo para gestão de colaboradores, desenvo
 ├── nova_senha.php        # Definição de nova credencial
 ├── logout.php            # Destruição segura de sessão
 └── README.md             # Documentação do projeto
-🗄️ Estrutura do Banco de Dados
+```
+Estrutura do Banco de Dados
 O sistema utiliza duas tabelas que se comunicam através do E-mail do colaborador:
 
 funcionarios: Armazena os dados de RH (Nome, Cargo, Telefone, Situação).
 
 usuarios: Armazena as credenciais de acesso ao sistema (Login, Senha, Token de Recuperação).
 
-🚀 Como Executar o Projeto Localmente
-1. Pré-requisitos
+Como Executar o Projeto Localmente
+## 1. Pré-requisitos
 Servidor Web com PHP 7.4 ou superior (recomendado PHP 8+).
 
 Servidor PostgreSQL instalado.
 
 Extensão PDO para PostgreSQL (pdo_pgsql) ativada no seu php.ini.
 
-2. Configurando o Banco de Dados
+## 2. Configurando o Banco de Dados
 Rode o script abaixo no seu gerenciador PostgreSQL (pgAdmin, DBeaver, etc.):
-
+```text
 SQL
 CREATE DATABASE sistema_funcionarios;
 \c sistema_funcionarios;
@@ -69,18 +70,19 @@ CREATE TABLE funcionarios (
     telefone VARCHAR(20),
     situacao VARCHAR(10) DEFAULT 'Ativo'
 );
-
 -- Inserindo o primeiro Administrador
 INSERT INTO usuarios (usuario, senha, token_recuperacao) VALUES ('admin@empresa.com', 'admin123', 'MASTER-TOKEN-999');
-3. Ajustando a Conexão
+```
+## 3. Ajustando a Conexão
 Abra o arquivo db.php e insira as credenciais do seu banco de dados local:
-
+```text
 PHP
 $host = 'localhost';
 $dbname = 'sistema_funcionarios';
 $user = 'postgres';
 $password = 'SUA_SENHA_AQUI'; 
-4. Acessando o Sistema
+```
+## 4. Acessando o Sistema
 Acesse pelo navegador: http://localhost/sua_pasta/index.php.
 
 Login Padrão: admin@empresa.com
