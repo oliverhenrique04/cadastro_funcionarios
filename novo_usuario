@@ -1,0 +1,20 @@
+<?php
+session_start();
+require 'db.php';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $usuario = trim($_POST['usuario']);
+    $senha = trim($_POST['senha']);
+    
+    // Gerando um token aleatório seguro de 16 caracteres (8 bytes em hex)
+    $token = strtoupper(bin2hex(random_bytes(4)) . "-" . bin2hex(random_bytes(4)));
+
+    try {
+        $stmt = $pdo->prepare("INSERT INTO usuarios (usuario, senha, token_recuperacao) VALUES (?, ?, ?)");
+        $stmt->execute([$usuario, $senha, $token]);
+        $sucesso = "Usuário criado! Token: " . $token;
+    } catch (PDOException $e) {
+        $erro = "Erro ao criar: " . $e->getMessage();
+    }
+}
+?>

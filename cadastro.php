@@ -4,16 +4,45 @@ if (!isset($_SESSION['logado'])) { header("Location: index.php"); exit; }
 require 'db.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $nome = $_POST['nome'];
-    $cargo = $_POST['cargo'];
-    $email = $_POST['email'];
-    $telefone = $_POST['telefone'];
-    $situacao = $_POST['situacao'];
+    $nome = trim($_POST['nome']);
+    $cargo = trim($_POST['cargo']);
+    $email = trim($_POST['email']);
+    $telefone = trim($_POST['telefone']);
+    $situacao = trim($_POST['situacao']);
 
-    $stmt = $pdo->prepare("INSERT INTO funcionarios (nome, cargo, email, telefone, situacao) VALUES (?, ?, ?, ?, ?)");
-    if ($stmt->execute([$nome, $cargo, $email, $telefone, $situacao])) {
-        header("Location: listagem.php");
-        exit;
+    // Verifica se o email foi preenchido, pois será o login
+    if (empty($email)) {
+        $erro = "O E-mail é obrigatório, pois será usado como usuário de login!";
+    } else {
+        try {
+            // Inicia a transação (garante que os dois inserts funcionem ou falhem juntos)
+            $pdo->beginTransaction();
+
+            // 1. Salva na tabela de Funcionários
+            $stmt_func = $pdo->prepare("INSERT INTO funcionarios (nome, cargo, email, telefone, situacao) VALUES (?, ?, ?, ?, ?)");
+            $stmt_func->execute([$nome, $cargo, $email, $telefone, $situacao]);
+
+            // 2. Cria a conta de acesso na tabela de Usuários automaticamente
+            $senha_padrao = 'mudar123'; // Senha inicial
+            $token_gerado = strtoupper(bin2hex(random_bytes(4)) . "-" . bin2hex(random_bytes(4)));
+            
+            $stmt_user = $pdo->prepare("INSERT INTO usuarios (usuario, senha, token_recuperacao) VALUES (?, ?, ?)");
+            $stmt_user->execute([$email, $senha_padrao, $token_gerado]);
+
+            // Confirma a transação
+            $pdo->commit();
+
+            // Guarda uma mensagem na sessão para mostrar na listagem
+            $_SESSION['mensagem'] = "Funcionário cadastrado! Login: $email | Senha inicial: mudar123";
+            
+            header("Location: listagem.php");
+            exit;
+
+        } catch (PDOException $e) {
+            // Se der erro (ex: e-mail já existe), desfaz tudo
+            $pdo->rollBack();
+            $erro = "Erro ao cadastrar. Verifique se o e-mail já está em uso. Detalhe: " . $e->getMessage();
+        }
     }
 }
 ?>
@@ -38,9 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
-                    <li class="nav-item"><a class="nav-link" href="#">Início</a></li>
-                    <li class="nav-item"><a class="nav-link" href="listagem.php">Listagem</a></li>
-                </ul>
+    <li class="nav-item"><a class="nav-link" href="#">Início</a></li>
+    <li class="nav-item"><a class="nav-link" href="listagem.php">Listagem</a></li>
+    <li class="nav-item"><a class="nav-link" href="usuarios.php"><i class="fas fa-users-cog"></i> Usuários</a></li>
+</ul>
                 
                 <div class="dropdown">
                     <button class="btn btn-link text-white text-decoration-none dropdown-toggle fw-bold" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">

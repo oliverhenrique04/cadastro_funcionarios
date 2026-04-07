@@ -3,16 +3,108 @@ session_start();
 if (!isset($_SESSION['logado'])) { header("Location: index.php"); exit; }
 require 'db.php';
 
-// Sistema de busca
-$busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
-if ($busca) {
-    $stmt = $pdo->prepare("SELECT * FROM funcionarios WHERE nome ILIKE ? ORDER BY id ASC");
-    $stmt->execute(["%$busca%"]);
-} else {
-    $stmt = $pdo->query("SELECT * FROM funcionarios ORDER BY id ASC");
+// =======================================================
+// LÓGICA DE PROCESSAMENTO (EDITAR E EXCLUIR)
+// =======================================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['acao'])) {
+    
+    // --- 1. EDITAR FUNCIONÁRIO E ACESSO ---
+    if ($_POST['acao'] == 'editar_funcionario') {
+        $id_editar = (int)$_POST['id_funcionario'];
+        $nome = trim($_POST['edit_nome']);
+        $cargo = trim($_POST['edit_cargo']);
+        $email = trim($_POST['edit_email']);
+        $telefone = trim($_POST['edit_telefone']);
+        $situacao = trim($_POST['edit_situacao']);
+        $nova_senha = trim($_POST['edit_senha']);
+        $email_antigo = trim($_POST['old_email']);
+
+        try {
+            $pdo->beginTransaction();
+
+            // Atualiza os dados do funcionário
+            $stmt = $pdo->prepare("UPDATE funcionarios SET nome = ?, cargo = ?, email = ?, telefone = ?, situacao = ? WHERE id = ?");
+            $stmt->execute([$nome, $cargo, $email, $telefone, $situacao, $id_editar]);
+
+            // Atualiza o usuário de login
+            if (!empty($nova_senha)) {
+                // Atualiza email (login) e a senha
+                $stmt_u = $pdo->prepare("UPDATE usuarios SET usuario = ?, senha = ? WHERE usuario = ?");
+                $stmt_u->execute([$email, $nova_senha, $email_antigo]);
+            } else if ($email !== $email_antigo) {
+                // Se não digitou senha, mas mudou o e-mail, atualiza só o login
+                $stmt_u = $pdo->prepare("UPDATE usuarios SET usuario = ? WHERE usuario = ?");
+                $stmt_u->execute([$email, $email_antigo]);
+            }
+
+            $pdo->commit();
+            $mensagem_sucesso = "Funcionário atualizado com sucesso!";
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            $mensagem_erro = "Erro ao atualizar. O e-mail pode já estar em uso por outra conta.";
+        }
+    }
+
+    // --- 2. EXCLUIR FUNCIONÁRIO E ACESSO ---
+    if ($_POST['acao'] == 'excluir_funcionario') {
+        $id_excluir = (int)$_POST['id_funcionario'];
+        $email_excluir = trim($_POST['email_funcionario']);
+
+        try {
+            $pdo->beginTransaction();
+            
+            // Exclui o login associado
+            if (!empty($email_excluir)) {
+                $stmt_user = $pdo->prepare("DELETE FROM usuarios WHERE usuario = ?");
+                $stmt_user->execute([$email_excluir]);
+            }
+
+            // Exclui o funcionário
+            $stmt_func = $pdo->prepare("DELETE FROM funcionarios WHERE id = ?");
+            $stmt_func->execute([$id_excluir]);
+
+            $pdo->commit();
+            $mensagem_sucesso = "Funcionário e acesso removidos permanentemente.";
+        } catch (PDOException $e) {
+            $pdo->rollBack();
+            $mensagem_erro = "Erro ao excluir: " . $e->getMessage();
+        }
+    }
 }
-$funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// =======================================================
+// CONFIGURAÇÕES DE BUSCA E PAGINAÇÃO
+// =======================================================
+$busca = isset($_GET['busca']) ? trim($_GET['busca']) : '';
+$registros_por_pagina = 5;
+$pagina_atual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
+if ($pagina_atual < 1) $pagina_atual = 1;
+$offset = ($pagina_atual - 1) * $registros_por_pagina;
+$params = [];
+
+// Conta o total de registros (para paginação)
+$sql_count = "SELECT COUNT(*) FROM funcionarios f";
+if ($busca) {
+    $sql_count .= " WHERE f.nome ILIKE ?";
+    $params[] = "%$busca%";
+}
+$stmt_count = $pdo->prepare($sql_count);
+$stmt_count->execute($params);
+$total_registros = $stmt_count->fetchColumn();
+$total_paginas = ceil($total_registros / $registros_por_pagina);
+
+// Busca os funcionários cruzando com a tabela de usuários (LEFT JOIN) para pegar o Token
+$sql_data = "SELECT f.*, u.token_recuperacao FROM funcionarios f 
+             LEFT JOIN usuarios u ON f.email = u.usuario";
+if ($busca) {
+    $sql_data .= " WHERE f.nome ILIKE ?";
+}
+$sql_data .= " ORDER BY f.id ASC LIMIT $registros_por_pagina OFFSET $offset";
+$stmt_data = $pdo->prepare($sql_data);
+$stmt_data->execute($params);
+$funcionarios = $stmt_data->fetchAll(PDO::FETCH_ASSOC);
 ?>
+
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -30,20 +122,16 @@ $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <nav class="navbar navbar-expand-lg navbar-dark navbar-custom mb-4 shadow-sm">
         <div class="container">
             <a class="navbar-brand fw-bold" href="#"><i class="fas fa-globe-americas"></i> Cadastro de Funcionários</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item"><a class="nav-link" href="#">Início</a></li>
                     <li class="nav-item"><a class="nav-link active fw-bold border-bottom" href="listagem.php">Listagem</a></li>
                 </ul>
-                
                 <div class="dropdown">
-                    <button class="btn btn-link text-white text-decoration-none dropdown-toggle fw-bold" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
-                        Olá, <?php echo htmlspecialchars($_SESSION['usuario']); ?>
+                    <button class="btn btn-link text-white text-decoration-none dropdown-toggle fw-bold" data-bs-toggle="dropdown">
+                        Olá, <?= htmlspecialchars($_SESSION['usuario']); ?>
                     </button>
-                    <ul class="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userMenu">
+                    <ul class="dropdown-menu dropdown-menu-end shadow">
                         <li><a class="dropdown-item text-danger" href="logout.php"><i class="fas fa-sign-out-alt"></i> Sair do Sistema</a></li>
                     </ul>
                 </div>
@@ -54,6 +142,16 @@ $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <div class="container">
         <h4 class="mb-4 text-primary fw-bold" style="color: #2b5876 !important;">Listagem de Funcionários</h4>
         
+        <?php 
+        // Mensagem vinda do cadastro.php
+        if(isset($_SESSION['mensagem'])){
+            echo "<div class='alert alert-success alert-dismissible fade show'><i class='fas fa-check-circle'></i> {$_SESSION['mensagem']} <button class='btn-close' data-bs-dismiss='alert'></button></div>";
+            unset($_SESSION['mensagem']);
+        }
+        if(isset($mensagem_sucesso)) echo "<div class='alert alert-success alert-dismissible fade show'><i class='fas fa-check-circle'></i> $mensagem_sucesso <button class='btn-close' data-bs-dismiss='alert'></button></div>"; 
+        if(isset($mensagem_erro)) echo "<div class='alert alert-danger alert-dismissible fade show'><i class='fas fa-exclamation-triangle'></i> $mensagem_erro <button class='btn-close' data-bs-dismiss='alert'></button></div>"; 
+        ?>
+
         <div class="card shadow-sm border-0">
             <div class="card-body p-4">
                 <form method="GET" class="d-flex mb-4">
@@ -72,8 +170,9 @@ $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <th class="ps-3">ID</th>
                                 <th>Nome</th>
                                 <th>Cargo</th>
-                                <th>E-mail</th>
+                                <th>E-mail (Login)</th>
                                 <th>Situação</th>
+                                <th>Token (Recuperar Senha)</th>
                                 <th class="text-center">Ações</th>
                             </tr>
                         </thead>
@@ -92,32 +191,150 @@ $funcionarios = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                             <span class="badge bg-secondary px-2 py-1">Inativo</span>
                                         <?php endif; ?>
                                     </td>
-                                    <td class="text-center">
-                                        <button class="btn btn-sm btn-light border text-primary"><i class="fas fa-pen"></i></button>
-                                        <button class="btn btn-sm btn-light border text-info"><i class="fas fa-envelope"></i></button>
-                                        <button class="btn btn-sm btn-light border text-danger"><i class="fas fa-trash"></i></button>
+                                    <td>
+                                        <code class="bg-light px-2 py-1 border rounded text-dark">
+                                            <?= !empty($func['token_recuperacao']) ? htmlspecialchars($func['token_recuperacao']) : 'Sem Acesso' ?>
+                                        </code>
+                                    </td>
+                                    <td class="text-center text-nowrap">
+                                        <button class="btn btn-sm btn-light border text-primary btn-editar" 
+                                                title="Editar Funcionário"
+                                                data-bs-toggle="modal" data-bs-target="#modalEditar"
+                                                data-id="<?= $func['id'] ?>"
+                                                data-nome="<?= htmlspecialchars($func['nome']) ?>"
+                                                data-cargo="<?= htmlspecialchars($func['cargo']) ?>"
+                                                data-email="<?= htmlspecialchars($func['email']) ?>"
+                                                data-telefone="<?= htmlspecialchars($func['telefone']) ?>"
+                                                data-situacao="<?= $func['situacao'] ?>">
+                                            <i class="fas fa-pen"></i>
+                                        </button>
+                                        
+                                        <form method="POST" class="d-inline" onsubmit="return confirm('Excluir <?= htmlspecialchars($func['nome']) ?> do sistema e revogar seu acesso?\n\nEsta ação é irreversível.');">
+                                            <input type="hidden" name="acao" value="excluir_funcionario">
+                                            <input type="hidden" name="id_funcionario" value="<?= $func['id'] ?>">
+                                            <input type="hidden" name="email_funcionario" value="<?= htmlspecialchars($func['email']) ?>">
+                                            <button type="submit" class="btn btn-sm btn-light border text-danger" title="Excluir Funcionário">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
                                     </td>
                                 </tr>
                                 <?php endforeach; ?>
                             <?php else: ?>
-                                <tr><td colspan="6" class="text-center py-3">Nenhum funcionário encontrado.</td></tr>
+                                <tr><td colspan="7" class="text-center py-3">Nenhum funcionário encontrado.</td></tr>
                             <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
 
+                <?php if ($total_paginas > 1): ?>
                 <nav class="mt-4">
                     <ul class="pagination justify-content-center">
-                        <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                        <li class="page-item"><a class="page-link text-dark" href="#">2</a></li>
-                        <li class="page-item"><a class="page-link text-dark" href="#">3</a></li>
-                        <li class="page-item"><a class="page-link text-dark" href="#">Próximo >></a></li>
+                        <li class="page-item <?= ($pagina_atual <= 1) ? 'disabled' : '' ?>">
+                            <a class="page-link" href="?pagina=<?= $pagina_atual - 1 ?>&busca=<?= urlencode($busca) ?>">Anterior</a>
+                        </li>
+                        <?php for ($i = 1; $i <= $total_paginas; $i++): ?>
+                            <li class="page-item <?= ($i == $pagina_atual) ? 'active' : '' ?>">
+                                <a class="page-link <?= ($i != $pagina_atual) ? 'text-dark' : '' ?>" href="?pagina=<?= $i ?>&busca=<?= urlencode($busca) ?>"><?= $i ?></a>
+                            </li>
+                        <?php endfor; ?>
+                        <li class="page-item <?= ($pagina_atual >= $total_paginas) ? 'disabled' : '' ?>">
+                            <a class="page-link text-dark" href="?pagina=<?= $pagina_atual + 1 ?>&busca=<?= urlencode($busca) ?>">Próximo >></a>
+                        </li>
                     </ul>
                 </nav>
+                <?php endif; ?>
+                
             </div>
         </div>
     </div>
 
+    <div class="modal fade" id="modalEditar" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <form method="POST">
+            <div class="modal-header">
+              <h5 class="modal-title text-primary fw-bold"><i class="fas fa-user-edit"></i> Editar Funcionário</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body px-4">
+              <input type="hidden" name="acao" value="editar_funcionario">
+              <input type="hidden" name="id_funcionario" id="edit_id">
+              <input type="hidden" name="old_email" id="old_email">
+              
+              <div class="row mb-3">
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold">Nome</label>
+                      <input type="text" name="edit_nome" id="edit_nome" class="form-control" required>
+                  </div>
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold">Cargo</label>
+                      <select name="edit_cargo" id="edit_cargo" class="form-select">
+                          <option>Administrador</option>
+                          <option>Gerente</option>
+                          <option>Assistente</option>
+                      </select>
+                  </div>
+              </div>
+
+              <div class="row mb-3">
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold">E-mail (Login)</label>
+                      <input type="email" name="edit_email" id="edit_email" class="form-control" required>
+                  </div>
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold">Telefone</label>
+                      <input type="text" name="edit_telefone" id="edit_telefone" class="form-control">
+                  </div>
+              </div>
+
+              <div class="row mb-3">
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold d-block">Situação</label>
+                      <div class="form-check form-check-inline mt-2">
+                          <input class="form-check-input" type="radio" name="edit_situacao" id="sit_ativo" value="Ativo">
+                          <label class="form-check-label">Ativo</label>
+                      </div>
+                      <div class="form-check form-check-inline mt-2">
+                          <input class="form-check-input" type="radio" name="edit_situacao" id="sit_inativo" value="Inativo">
+                          <label class="form-check-label">Inativo</label>
+                      </div>
+                  </div>
+                  <div class="col-md-6">
+                      <label class="form-label fw-bold text-danger">Nova Senha de Acesso</label>
+                      <input type="password" name="edit_senha" class="form-control" placeholder="Deixe em branco para não alterar">
+                  </div>
+              </div>
+            </div>
+            <div class="modal-footer bg-light">
+              <button type="button" class="btn btn-light border" data-bs-dismiss="modal">Cancelar</button>
+              <button type="submit" class="btn btn-primary fw-bold" style="background-color: #3b71ca;">Salvar Alterações</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Preenche o Modal de Edição com os dados da linha clicada
+        document.addEventListener('DOMContentLoaded', function() {
+            var botoesEditar = document.querySelectorAll('.btn-editar');
+            botoesEditar.forEach(function(botao) {
+                botao.addEventListener('click', function() {
+                    document.getElementById('edit_id').value = this.getAttribute('data-id');
+                    document.getElementById('edit_nome').value = this.getAttribute('data-nome');
+                    document.getElementById('edit_cargo').value = this.getAttribute('data-cargo');
+                    document.getElementById('edit_email').value = this.getAttribute('data-email');
+                    document.getElementById('old_email').value = this.getAttribute('data-email');
+                    document.getElementById('edit_telefone').value = this.getAttribute('data-telefone');
+                    
+                    var situacao = this.getAttribute('data-situacao');
+                    if (situacao === 'Ativo') { document.getElementById('sit_ativo').checked = true; }
+                    else { document.getElementById('sit_inativo').checked = true; }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
