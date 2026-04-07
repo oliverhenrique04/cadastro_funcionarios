@@ -29,6 +29,7 @@ Este é um mini sistema web para gerenciamento de funcionários, desenvolvido co
 ├── listagem.php    # Tela 3: Tabela de listagem e pesquisa
 ├── logout.php      # Script para destruição de sessão e logoff
 └── README.md       # Documentação do projeto
+```
 🚀 Como Executar o Projeto Localmente
 Pré-requisitos
 Servidor Web com PHP 7.4 ou superior (XAMPP, WAMP, Laragon, ou embutido do PHP).
