@@ -39,14 +39,14 @@ Servidor PostgreSQL instalado e rodando.
 
 Extensão PDO para PostgreSQL (pdo_pgsql) ativada no php.ini.
 
-##Passo a Passo de Instalação
+## Passo a Passo de Instalação
 Clone ou baixe o projeto
 Coloque os arquivos na pasta pública do seu servidor web (ex: htdocs ou www).
 
-##Configure o Banco de Dados
+## Configure o Banco de Dados
 Abra o seu gerenciador do PostgreSQL (como o pgAdmin) e rode os comandos contidos no arquivo banco.sql para criar o banco de dados sistema_funcionarios e as tabelas usuarios e funcionarios.
 
-##Ajuste a Conexão
+## Ajuste a Conexão
 Abra o arquivo db.php e edite as credenciais de acesso ao seu banco de dados local:
 
 PHP
